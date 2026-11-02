@@ -306,3 +306,12 @@ ol {
   outline: 1px solid #fff;
   outline-offset: 2px;
 }
+
+.result__video-container,
+.content__list-container {
+  position: relative;
+}
+
+.content__list-container {
+  padding-block: 3px;
+}
