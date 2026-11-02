@@ -1,8 +1,53 @@
 /* КОНФИГ */
 const preloaderWaitindTime = 1200;
 const cardsOnPage = 5;
-const BASE_URL = 'https://v-content.practicum-team.ru';
-const endpoint = `${BASE_URL}/api/videos?pagination[pageSize]=${cardsOnPage}&`;
+// 'local' — файлы из media; 'api' — исходный внешний сервис.
+const DATA_SOURCE = 'local';
+const API_URL = 'https://v-content.practicum-team.ru';
+const BASE_URL = DATA_SOURCE === 'local' ? './' : API_URL;
+const endpoint = `${API_URL}/api/videos?pagination[pageSize]=${cardsOnPage}&`;
+
+// Условные города и время суток для проверки поиска, а не метаданные файлов.
+const localVideos = [
+  ['Белгород', 'morning', 'poster1.jpg', 'video1.mp4'],
+  ['Адлер', 'afternoon', 'poster2.jpg', 'sample.mp4'],
+  ['Воронеж', 'night', 'poster3.jpg', 'video1.mp4'],
+  ['Зеленоград', 'morning', 'poster2.jpg', 'sample.mp4'],
+  ['Санкт-Петербург', 'afternoon', 'poster3.jpg', 'video1.mp4'],
+  ['Москва', 'night', 'poster1.jpg', 'sample.mp4'],
+].map(([city, time, poster, video], index) => ({
+  id: `local-${index + 1}`,
+  city,
+  time_of_day: time,
+  description: 'Демонстрационная запись из локальной папки media.',
+  thumbnail: { url: `media/${poster}` },
+  poster: { url: `media/${poster}` },
+  video: { url: `media/${video}` },
+}));
+
+async function loadVideos(requestUrl) {
+  if (DATA_SOURCE === 'api') {
+    const response = await fetch(requestUrl);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  }
+
+  const params = new URL(requestUrl).searchParams;
+  const city = (params.get('filters[city][$containsi]') || '').trim().toLocaleLowerCase('ru');
+  const times = params.getAll('filters[time_of_day][$eqi]');
+  const page = Math.max(1, Number(params.get('pagination[page]')) || 1);
+  const filtered = localVideos.filter((video) =>
+    video.city.toLocaleLowerCase('ru').includes(city) &&
+    (!times.length || times.includes(video.time_of_day))
+  );
+  return {
+    results: filtered.slice((page - 1) * cardsOnPage, page * cardsOnPage),
+    pagination: {
+      page,
+      pageCount: Math.ceil(filtered.length / cardsOnPage),
+    },
+  };
+}
 
 /* ЭЛЕМЕНТЫ СТРАНИЦЫ */
 const cardsList = document.querySelector('.content__list');
@@ -59,7 +104,7 @@ form.onsubmit = (e) => {
 
 async function mainMechanics(endpoint) {
   try {
-    const data = await (await fetch(endpoint)).json();
+    const data = await loadVideos(endpoint);
     cardsOnPageState = data.results;
 
     if (!data?.results?.[0]) {
@@ -132,8 +177,19 @@ async function delay(ms) {
 // Промис, который резолвится, если видео целиком готово к проинрыванию без пауз
 
 async function waitForReadyVideo(video) {
-  return await new Promise((resolve) => {
-    video.oncanplaythrough = resolve;
+  // loadeddata достаточно для отображения кадра; canplaythrough может не
+  // наступить при preload, экономии трафика или локальном открытии страницы.
+  if (video.readyState >= 2 || video.error) return;
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timeout);
+      video.removeEventListener('loadeddata', finish);
+      video.removeEventListener('error', finish);
+      resolve();
+    };
+    const timeout = setTimeout(finish, 5000);
+    video.addEventListener('loadeddata', finish, { once: true });
+    video.addEventListener('error', finish, { once: true });
   });
 }
 
@@ -164,7 +220,7 @@ function appendCards({ baseUrl, dataArray, cardTmp, container }) {
       el.description;
     node
       .querySelector('.content__video-card-thumbnail')
-      .setAttribute('src', `${baseUrl}${el.thumbnail.url}`);
+      .setAttribute('src', resolveMediaUrl(baseUrl, el.thumbnail.url));
     node
       .querySelector('.content__video-card-thumbnail')
       .setAttribute('alt', el.description);
@@ -173,10 +229,14 @@ function appendCards({ baseUrl, dataArray, cardTmp, container }) {
   console.log('Сгенерировал карточки');
 }
 
+function resolveMediaUrl(baseUrl, path) {
+  return new URL(path, new URL(baseUrl, document.baseURI)).href;
+}
+
 // Устанавливет внужное видео в контейнер ✅
 function setVideo({ baseUrl, video, videoUrl, posterUrl }) {
-  video.setAttribute('src', `${baseUrl}${videoUrl}`);
-  video.setAttribute('poster', `${baseUrl}${posterUrl}`);
+  video.setAttribute('src', resolveMediaUrl(baseUrl, videoUrl));
+  video.setAttribute('poster', resolveMediaUrl(baseUrl, posterUrl));
   console.log('Подставил видео в основной блок');
 }
 
@@ -199,11 +259,11 @@ function serializeFormData(form) {
 // Генерирует строку с фильтрами запросов в API в зависимости от данных из формы ✅
 function generateFilterRequest(endpoint, city, timeArray) {
   if (city) {
-    endpoint += `filters[city][$containsi]=${city}&`;
+    endpoint += `filters[city][$containsi]=${encodeURIComponent(city.trim())}&`;
   }
   if (timeArray) {
     timeArray.forEach((timeslot) => {
-      endpoint += `filters[time_of_day][$eqi]=${timeslot}&`;
+      endpoint += `filters[time_of_day][$eqi]=${encodeURIComponent(timeslot)}&`;
     });
   }
   console.log('Сгенерировал строку адреса запроса в API из данных формы');
@@ -276,7 +336,7 @@ function showMoreCards({
     let currentPage = dataArray.pagination.page;
     let urlToFetch = `${initialEndpoint}pagination[page]=${(currentPage += 1)}&`;
     try {
-      let data = await (await fetch(urlToFetch)).json();
+      const data = await loadVideos(urlToFetch);
       buttonInDOM.remove();
       cardsOnPageState = cardsOnPageState.concat(data.results);
       appendCards({
