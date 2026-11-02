@@ -200,3 +200,20 @@ ol {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+.search-form__textfield {
+  appearance: none;
+  inline-size: 225px;
+  border: 0;
+  border-block: 1px solid #fff;
+  padding: 0;
+  color: #fff;
+  font-family: inherit;
+  font-size: 18px;
+  line-height: normal;
+  background-color: transparent;
+}
+
+.search-form__textfield::placeholder {
+  color: rgb(255 255 255 / 0.7);
+}
