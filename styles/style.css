@@ -49,3 +49,26 @@ ol {
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: #D9D9D9;
 }
+
+.page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-block-size: 800px;
+}
+
+.content {
+  display: flex;
+  align-items: flex-end;
+  gap: 30px;
+  inline-size: 1140px;
+}
+
+.result {
+  flex: 0 0 711px;
+}
+
+.content__details {
+  flex: 1;
+  min-inline-size: 0;
+}
